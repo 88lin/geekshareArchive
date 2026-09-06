@@ -5,7 +5,7 @@ import {
   type ExecutionContextLike,
   type ScheduledControllerLike,
 } from "./cloudflare/runtime";
-import type { PublicSiteConfig } from "./lib/site-config";
+import { DEFAULT_OG_IMAGE_PATH, getCanonicalHostname, type PublicSiteConfig } from "./lib/site-config";
 
 interface HtmlElement {
   setInnerContent(content: string): void;
@@ -76,6 +76,40 @@ async function homepage(request: Request, env: Env): Promise<Response> {
   const headers = new Headers(transformed.headers);
   headers.set("Cache-Control", "no-store");
   return new Response(transformed.body, { status: transformed.status, headers });
+}
+
+async function defaultOgImage(request: Request, env: Env): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
+  }
+  const [template, config] = await Promise.all([
+    // Fetch the asset directly, without the caller's HEAD or conditional headers.
+    env.ASSETS.fetch(new Request(new URL(DEFAULT_OG_IMAGE_PATH, request.url))),
+    loadSiteConfig(env),
+  ]);
+  if (!template.ok) {
+    return new Response(request.method === "HEAD" ? null : "Share image unavailable", {
+      status: template.status,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+
+  const hostname = getCanonicalHostname(config.seo.canonicalUrl);
+  const escapedHostname = hostname.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  // Reserve at most one em per glyph plus the template's 0.2px letter spacing.
+  const fontSize = Math.min(24, 1080 / hostname.length - 0.2);
+  const svg = (await template.text()).replace(
+    /(<text\b[^>]*\bid="canonical-domain"[^>]*)(>)[\s\S]*?(<\/text>)/,
+    (_match, opening: string, _end: string, closing: string) =>
+      `${opening} style="font-size: ${fontSize}px">${escapedHostname}${closing}`,
+  );
+  return new Response(request.method === "HEAD" ? null : svg, {
+    headers: {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
 }
 
 async function messagePage(request: Request, env: Env, id: string): Promise<Response> {
@@ -165,6 +199,7 @@ async function adminPage(request: Request, env: Env): Promise<Response> {
 const worker = {
   async fetch(request: Request, env: Env, context: ExecutionContextLike): Promise<Response> {
     const url = new URL(request.url);
+    if (url.pathname === DEFAULT_OG_IMAGE_PATH) return defaultOgImage(request, env);
     if (url.pathname.startsWith("/api/")) return handleApi(request, env, context);
     if (url.pathname === "/" || url.pathname === "/index.html") return homepage(request, env);
     if (url.pathname.startsWith("/admin/") && url.pathname !== "/admin/") {

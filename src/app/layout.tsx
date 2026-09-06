@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     siteName: DEFAULT_PUBLIC_SITE_CONFIG.branding.siteName,
     type: "website",
     locale: "zh_CN",
-    images: ["/og-image.svg"],
+    images: [DEFAULT_PUBLIC_SITE_CONFIG.seo.ogImageUrl],
   },
 
   twitter: {
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 
     title: DEFAULT_PUBLIC_SITE_CONFIG.seo.title,
     description: DEFAULT_PUBLIC_SITE_CONFIG.seo.description,
-    images: ["/og-image.svg"],
+    images: [DEFAULT_PUBLIC_SITE_CONFIG.seo.ogImageUrl],
   },
 
   robots: {

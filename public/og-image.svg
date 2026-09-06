@@ -95,7 +95,7 @@
   </g>
 
   <!-- 右下角域名 -->
-  <text x="1140" y="570" class="meta" fill="#ffffff" fill-opacity="0.9" text-anchor="end">
-    your-domain.example
+  <text id="canonical-domain" x="1140" y="570" class="meta" fill="#ffffff" fill-opacity="0.9" text-anchor="end">
+    example.com
   </text>
 </svg>

@@ -8,7 +8,7 @@
   "assets": {
     "directory": "./out",
     "binding": "ASSETS",
-    "run_worker_first": ["/", "/index.html", "/api/*", "/message/*", "/admin/*"],
+    "run_worker_first": ["/", "/index.html", "/og-image.svg", "/api/*", "/message/*", "/admin/*"],
     "not_found_handling": "404-page"
   },
   "d1_databases": [

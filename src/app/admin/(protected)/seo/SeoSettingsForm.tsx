@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { adminRequestJson as requestJson } from "@/lib/admin-api";
+import { isDefaultOgImageUrl } from "@/lib/site-config";
 
 type SeoSettings = {
   title: string;
@@ -181,7 +182,7 @@ export default function SeoSettingsForm() {
                 <div className="flex flex-wrap items-center gap-2 border-t border-zinc-200 p-3">
                   <Button type="button" variant="outline" size="sm" disabled={busy !== null} onClick={() => ogImageInputRef.current?.click()}><ImageUp />{busy === "og" ? "上传中…" : "上传图片"}</Button>
                   <input ref={ogImageInputRef} className="sr-only" tabIndex={-1} type="file" accept="image/png,image/jpeg,image/webp" disabled={busy !== null} aria-label="选择社交分享图片" onChange={(event) => { void upload(event.target.files?.[0]); event.currentTarget.value = ""; }} />
-                  {settings.ogImageUrl !== "/og-image.svg" && <Button type="button" variant="ghost" size="sm" disabled={busy !== null} onClick={() => void resetOgImage()}><RotateCcw />恢复默认</Button>}
+                  {!isDefaultOgImageUrl(settings.ogImageUrl) && <Button type="button" variant="ghost" size="sm" disabled={busy !== null} onClick={() => void resetOgImage()}><RotateCcw />恢复默认</Button>}
                   <span className="text-xs text-zinc-500">PNG/JPEG/WebP，最大 5 MiB</span>
                 </div>
               </div>

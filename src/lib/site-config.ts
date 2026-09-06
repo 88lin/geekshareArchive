@@ -1,5 +1,6 @@
 export const SITE_BRANDING_SETTING_KEY = "site.branding.v1";
 export const SITE_SEO_SETTING_KEY = "site.seo.v1";
+export const DEFAULT_OG_IMAGE_PATH = "/og-image.svg";
 
 export type SiteAssetType = "logo" | "favicon" | "og";
 
@@ -73,6 +74,24 @@ export const DEFAULT_SEO_SETTINGS: StoredSeoSettings = {
   robotsFollow: true,
 };
 
+export function getCanonicalHostname(canonicalUrl: string): string {
+  try {
+    const url = new URL(canonicalUrl);
+    if (url.protocol === "http:" || url.protocol === "https:") return url.hostname;
+  } catch {
+    // Invalid or missing settings use the same fallback as the public site.
+  }
+  return new URL(DEFAULT_SEO_SETTINGS.canonicalUrl).hostname;
+}
+
+export function defaultOgImageUrl(canonicalUrl: string): string {
+  return `${DEFAULT_OG_IMAGE_PATH}?v=${encodeURIComponent(getCanonicalHostname(canonicalUrl))}`;
+}
+
+export function isDefaultOgImageUrl(value: string): boolean {
+  return value === DEFAULT_OG_IMAGE_PATH || value.startsWith(`${DEFAULT_OG_IMAGE_PATH}?`);
+}
+
 export const DEFAULT_PUBLIC_SITE_CONFIG: PublicSiteConfig = {
   branding: {
     siteName: DEFAULT_BRANDING_SETTINGS.siteName,
@@ -86,7 +105,7 @@ export const DEFAULT_PUBLIC_SITE_CONFIG: PublicSiteConfig = {
     description: DEFAULT_SEO_SETTINGS.description,
     keywords: DEFAULT_SEO_SETTINGS.keywords,
     canonicalUrl: DEFAULT_SEO_SETTINGS.canonicalUrl,
-    ogImageUrl: "/og-image.svg",
+    ogImageUrl: defaultOgImageUrl(DEFAULT_SEO_SETTINGS.canonicalUrl),
     robotsIndex: DEFAULT_SEO_SETTINGS.robotsIndex,
     robotsFollow: DEFAULT_SEO_SETTINGS.robotsFollow,
   },

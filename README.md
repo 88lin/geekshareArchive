@@ -9,14 +9,14 @@ GeekShare Archive 是一个可自建的 Telegram 频道持久化归档。它用 
 
 ## 项目状态
 
-Phase 2 可靠性加固已于 2026-08-28 发布到 Production；Webhook、D1 migration、FTS 完整性以及站点/API smoke test 均已验证通过。Phase 2.4 暂缓，尚未完成真实 Telegram 媒体、缩略图故障恢复及 R2 PUT → D1 失败重试的端到端验证；详见 [PRODUCT.md](PRODUCT.md)。
+Phase 2 可靠性加固已于 2026-08-28 发布到 Production；此后已补充首页分页、Telegram 富文本消息和基于 Canonical URL 动态生成的默认分享图。截至 2026-09-07，本地 66 项测试、lint、typecheck、生产构建、Assets 校验、Wrangler dry-run 和高风险依赖审计均通过；最新 `main` 的 GitHub Actions 生产流水线成功，线上首页与 `/api/archive-meta` 返回 200。Phase 2.4 暂缓，尚未完成真实 Telegram 媒体、缩略图故障恢复及 R2 PUT → D1 失败重试的端到端验证；详见 [PRODUCT.md](PRODUCT.md)。
 
 ## 功能
 
-- 归档 `channel_post`、编辑事件和消息反应，来源消息删除后仍可保留已归档内容。
-- D1 FTS5 搜索、标签、年月、频道、内容类型和多种排序方式。
+- 归档 `channel_post`、编辑事件和消息反应，将受支持的 Telegram entity 转为安全富文本；来源消息删除后仍可保留已归档内容。
+- D1 FTS5 搜索、标签、年月、频道、内容类型、多种排序方式以及页码/cursor 分页。
 - R2 媒体、缩略图、频道头像和站点品牌资源。
-- 多频道首页、消息详情页、动态 SEO 和响应式界面。
+- 多频道首页、消息详情页、动态 SEO、按 Canonical URL 生成的默认分享图和响应式界面。
 - Cloudflare Access 管理后台，支持消息、频道、品牌、SEO、同步和媒体修复。
 - 10 条不含真实频道内容或媒体的演示种子。
 

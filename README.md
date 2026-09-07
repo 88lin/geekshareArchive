@@ -126,6 +126,8 @@ npm run deploy
 - 为 `your-domain.example/admin/d*`、`admin/m*`、`admin/c*`、`admin/s*` 和 `api/admin/*` 创建受保护的 Self-hosted 应用。
 - Allow Policy 使用你自己的管理员邮箱；建议使用 One-time PIN 或组织身份提供商。
 - 如需保留公开登录入口，可单独对精确 `/admin` 与 `/admin/` 使用 `Bypass + Everyone`。不要用 `admin/*` 代替受保护路径；Cloudflare 通配符可能匹配空字符串。
+- 将受保护后台应用的 Session Duration 设为 `1 month`，并让管理员 Policy 继承应用会话时长；新登录或续签的 `CF_Authorization` Cookie 将使用该期限，不需要站点另建 Session Cookie。
+- 保持受保护后台应用的 Cookie Path Attribute 关闭，使有效的应用 Cookie 能随 `/admin/` 请求发送。Worker 只用它将已登录管理员跳转到 `/admin/dashboard/`；后台页面和 API 仍要求 Access 注入并由 Worker 验证的 JWT 请求头。
 - 将 team domain、Application Audience 和管理员邮箱分别保存为 `CF_ACCESS_TEAM_DOMAIN`、`CF_ACCESS_AUD` 和 `CF_ACCESS_ADMIN_EMAIL` Secret。
 
 ### Telegram Webhook

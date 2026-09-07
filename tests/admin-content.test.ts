@@ -24,6 +24,7 @@ import {
   type AdminAccessConfig,
   type Env,
 } from "../src/cloudflare/runtime";
+import worker from "../src/worker";
 import { activeTelegramWebhookError } from "../src/lib/telegram-webhook-status";
 
 test("admin content filters only accept documented values", () => {
@@ -157,6 +158,114 @@ test("production admin routes reject missing JWTs and forged email headers", asy
 
   const unknownEnvironment = { ...env, ENVIRONMENT: undefined } as unknown as Env;
   assert.equal(await authenticateAdminRequest(forgedHeader, unknownEnvironment), null);
+});
+
+test("admin entry redirects only for a valid Access session cookie", async () => {
+  const { publicKey, privateKey } = await generateKeyPair("RS256");
+  const keyId = "admin-entry-test-key";
+  const publicJwk = await exportJWK(publicKey);
+  const teamDomain = "https://admin-entry-test.cloudflareaccess.com";
+  const audience = "admin-entry-audience";
+  const adminEmail = "admin@example.com";
+  const env = {
+    ENVIRONMENT: "production",
+    SITE_URL: "https://archive.example.com",
+    CF_ACCESS_TEAM_DOMAIN: teamDomain,
+    CF_ACCESS_AUD: audience,
+    CF_ACCESS_ADMIN_EMAIL: adminEmail,
+    ASSETS: {
+      fetch: async () => new Response("admin entry", {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      }),
+    },
+  } as unknown as Env;
+  const context = { waitUntil() {} };
+  const sign = (overrides: { audience?: string; email?: string; expiresAt?: number } = {}) =>
+    new SignJWT({ email: overrides.email ?? adminEmail })
+      .setProtectedHeader({ alg: "RS256", kid: keyId })
+      .setIssuer(teamDomain)
+      .setAudience(overrides.audience ?? audience)
+      .setIssuedAt()
+      .setExpirationTime(overrides.expiresAt ?? Math.floor(Date.now() / 1000) + 300)
+      .sign(privateKey);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    if (String(input) === `${teamDomain}/cdn-cgi/access/certs`) {
+      return Response.json({
+        keys: [{ ...publicJwk, kid: keyId, alg: "RS256", use: "sig" }],
+      });
+    }
+    return originalFetch(input, init);
+  }) as typeof fetch;
+
+  try {
+    const validToken = await sign();
+    const authenticatedEntry = await worker.fetch(
+      new Request("https://archive.example.com/admin/", {
+        headers: { Cookie: `CF_Authorization=${validToken}` },
+      }),
+      env,
+      context,
+    );
+    assert.equal(authenticatedEntry.status, 302);
+    assert.equal(authenticatedEntry.headers.get("Location"), "https://archive.example.com/admin/dashboard/");
+    assert.equal(authenticatedEntry.headers.get("Cache-Control"), "no-store");
+
+    for (const token of [
+      "malformed",
+      await sign({ expiresAt: Math.floor(Date.now() / 1000) - 60 }),
+      await sign({ audience: "wrong-audience" }),
+      await sign({ email: "visitor@example.com" }),
+    ]) {
+      const response = await worker.fetch(
+        new Request("https://archive.example.com/admin/", {
+          headers: { Cookie: `other=value; CF_Authorization=${token}` },
+        }),
+        env,
+        context,
+      );
+      assert.equal(response.status, 200);
+      assert.equal(await response.text(), "admin entry");
+      assert.equal(response.headers.get("Cache-Control"), "no-store");
+    }
+
+    const anonymousEntry = await worker.fetch(
+      new Request("https://archive.example.com/admin/"),
+      env,
+      context,
+    );
+    assert.equal(anonymousEntry.status, 200);
+    assert.equal(await anonymousEntry.text(), "admin entry");
+
+    const canonicalEntry = await worker.fetch(
+      new Request("https://archive.example.com/admin"),
+      env,
+      context,
+    );
+    assert.equal(canonicalEntry.status, 308);
+    assert.equal(canonicalEntry.headers.get("Location"), "https://archive.example.com/admin/");
+
+    const cookieOnlyProtectedPage = await worker.fetch(
+      new Request("https://archive.example.com/admin/dashboard/", {
+        headers: { Cookie: `CF_Authorization=${validToken}` },
+      }),
+      env,
+      context,
+    );
+    assert.equal(cookieOnlyProtectedPage.status, 401);
+
+    const headerAuthenticatedPage = await worker.fetch(
+      new Request("https://archive.example.com/admin/dashboard/", {
+        headers: { "Cf-Access-Jwt-Assertion": validToken },
+      }),
+      env,
+      context,
+    );
+    assert.equal(headerAuthenticatedPage.status, 200);
+    assert.equal(await headerAuthenticatedPage.text(), "admin entry");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("admin routes keep same-origin and input validation after authentication", async () => {

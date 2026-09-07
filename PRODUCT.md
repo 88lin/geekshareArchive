@@ -45,7 +45,7 @@ GeekShare Archive 将 Telegram 频道的新推送、编辑、反应和媒体持�
 - 媒体自动恢复采用 1、2、4、8 小时退避并在第 5 次失败后停止；人工重试可以重置 exhausted 状态。
 - thumbnail 失败必须可观察并可补偿，已成功的主 R2 对象继续复用；当前不支持的大型文件类型以明确的永久失败结束，不能无限请求。
 - 数据模型、公共消息结构和消息卡片支持多附件展示；Webhook 对每个 Telegram Update 仍只选择一种主媒体，尚未合并 media group 相册消息。
-- 精确 `/admin` 只展示不含管理 UI 的品牌登录入口；后台页面和管理接口依赖 Cloudflare Access，Worker 验证 Access JWT，写操作额外校验同源 `Origin`。
+- 精确 `/admin` 和 `/admin/` 对未登录访客只展示不含管理 UI 的品牌登录入口；持有有效 Access 应用 Cookie 的管理员会跳转到 `/admin/dashboard/`。后台页面和管理接口仍依赖 Cloudflare Access 注入的 JWT 请求头，Worker 验证其签名和管理员邮箱，写操作额外校验同源 `Origin`；后台应用会话设为一个月且不创建站点自有 Session Cookie。
 - 管理员可以编辑正文、标签、展示频道、发布时间和发布状态；后台覆盖优先于后续 Telegram 编辑。
 - 管理员可以永久删除消息及其明确记录的 R2 对象；删除墓碑阻止同一 Telegram 帖子重新入库，这是归档优先原则的人工例外。
 - Worker 的定时任务只做健康记录和有界重试，不承担完整频道历史抓取。

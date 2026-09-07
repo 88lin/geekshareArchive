@@ -1,5 +1,6 @@
 import { findMessage, handleApi, loadSiteConfig, runHourlyMaintenance } from "./cloudflare/api";
 import {
+  authenticateAdminEntrySession,
   authenticateAdminRequest,
   type Env,
   type ExecutionContextLike,
@@ -196,12 +197,48 @@ async function adminPage(request: Request, env: Env): Promise<Response> {
   return new Response(asset.body, { status: asset.status, headers });
 }
 
+async function adminEntryPage(request: Request, env: Env): Promise<Response> {
+  const principal = await authenticateAdminEntrySession(request, env);
+  if (principal) {
+    return new Response(null, {
+      status: 302,
+      headers: {
+        "Cache-Control": "no-store",
+        Location: new URL("/admin/dashboard/", request.url).toString(),
+      },
+    });
+  }
+
+  const url = new URL(request.url);
+  if (url.pathname === "/admin") {
+    return new Response(null, {
+      status: 308,
+      headers: {
+        "Cache-Control": "no-store",
+        Location: new URL("/admin/", request.url).toString(),
+      },
+    });
+  }
+
+  const asset = await env.ASSETS.fetch(request);
+  const headers = new Headers(asset.headers);
+  headers.set("Cache-Control", "no-store");
+  headers.set("X-Robots-Tag", "noindex, nofollow");
+  return new Response(asset.body, { status: asset.status, headers });
+}
+
 const worker = {
   async fetch(request: Request, env: Env, context: ExecutionContextLike): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === DEFAULT_OG_IMAGE_PATH) return defaultOgImage(request, env);
     if (url.pathname.startsWith("/api/")) return handleApi(request, env, context);
     if (url.pathname === "/" || url.pathname === "/index.html") return homepage(request, env);
+    if (
+      (url.pathname === "/admin" || url.pathname === "/admin/")
+      && (request.method === "GET" || request.method === "HEAD")
+    ) {
+      return adminEntryPage(request, env);
+    }
     if (url.pathname.startsWith("/admin/") && url.pathname !== "/admin/") {
       return adminPage(request, env);
     }

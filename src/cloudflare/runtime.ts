@@ -126,27 +126,53 @@ function accessKeySet(teamDomain: string): JWTVerifyGetKey {
   return keySet;
 }
 
+function localAdminPrincipal(env: Env): AdminPrincipal | null {
+  if (env.ENVIRONMENT !== "development" && env.ENVIRONMENT !== "test") return null;
+  return {
+    email: env.CF_ACCESS_ADMIN_EMAIL?.trim().toLowerCase() || "local-admin@localhost",
+  };
+}
+
+function adminAccessConfig(env: Env): AdminAccessConfig | null {
+  const teamDomain = env.CF_ACCESS_TEAM_DOMAIN?.trim().replace(/\/$/, "");
+  const audience = env.CF_ACCESS_AUD?.trim();
+  const adminEmail = env.CF_ACCESS_ADMIN_EMAIL?.trim().toLowerCase();
+  if (!teamDomain || !audience || !adminEmail) return null;
+  return { teamDomain, audience, adminEmail };
+}
+
+function requestCookie(request: Request, name: string): string | null {
+  const header = request.headers.get("Cookie");
+  if (!header) return null;
+  for (const part of header.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 0 || part.slice(0, separator).trim() !== name) continue;
+    return part.slice(separator + 1).trim() || null;
+  }
+  return null;
+}
+
+async function authenticateAdminToken(token: string | null, env: Env): Promise<AdminPrincipal | null> {
+  const localPrincipal = localAdminPrincipal(env);
+  if (localPrincipal) return localPrincipal;
+  const config = adminAccessConfig(env);
+  if (!config || !token) return null;
+  return verifyAdminAccessToken(token, config, accessKeySet(config.teamDomain));
+}
+
 export async function authenticateAdminRequest(
   request: Request,
   env: Env,
 ): Promise<AdminPrincipal | null> {
-  if (env.ENVIRONMENT === "development" || env.ENVIRONMENT === "test") {
-    return {
-      email: env.CF_ACCESS_ADMIN_EMAIL?.trim().toLowerCase() || "local-admin@localhost",
-    };
-  }
-
-  const teamDomain = env.CF_ACCESS_TEAM_DOMAIN?.trim().replace(/\/$/, "");
-  const audience = env.CF_ACCESS_AUD?.trim();
-  const adminEmail = env.CF_ACCESS_ADMIN_EMAIL?.trim().toLowerCase();
   const token = request.headers.get("Cf-Access-Jwt-Assertion")?.trim();
-  if (!teamDomain || !audience || !adminEmail || !token) return null;
+  return authenticateAdminToken(token || null, env);
+}
 
-  return verifyAdminAccessToken(
-    token,
-    { teamDomain, audience, adminEmail },
-    accessKeySet(teamDomain),
-  );
+export async function authenticateAdminEntrySession(
+  request: Request,
+  env: Env,
+): Promise<AdminPrincipal | null> {
+  return authenticateAdminToken(requestCookie(request, "CF_Authorization"), env);
 }
 
 export async function verifyAdminAccessToken(

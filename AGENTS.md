@@ -8,6 +8,14 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
+## GitHub submission workflow
+
+When the user asks to commit or push changes to GitHub, work from the local `main` checkout and push directly to `origin/main`. Do not create a task branch or Pull Request unless the user explicitly requests one.
+
+Before starting work, fetch `origin` and fast-forward the local `main` branch with `git pull --ff-only origin main`. Before pushing, confirm that `main` still contains the latest `origin/main`; if the histories diverge or a conflict occurs, stop and resolve it safely instead of force-pushing. Run the relevant checks before every push, stage only files that belong to the current task, and never force-push or delete `main`.
+
+In the Codex desktop app, prefer the Local checkout for this repository. If a task starts in a managed worktree, hand it off to Local before committing instead of creating a branch in the worktree.
+
 ## Deployment requests
 
 Whenever the user asks to deploy, publish, or go live, treat the request as authorization for the complete production-release workflow below and perform it in this order:

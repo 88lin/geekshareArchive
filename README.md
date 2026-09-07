@@ -109,7 +109,7 @@ npm run deploy
 
 ### GitHub Actions 自动生产部署
 
-本仓库在推送到 `main` 后复用 CI 自动发布生产环境。Pull Request 只运行 lint、typecheck、测试、构建、Assets 校验、Wrangler dry-run 和依赖审计，不读取生产 Secret，也不会迁移或部署远程资源。
+本仓库默认由维护者在本地完成检查后直接推送到 `main`，无需先创建功能分支或 Pull Request。每次推送到 `main` 后，GitHub Actions 会依次完成 lint、typecheck、测试、构建、Assets 校验、Wrangler dry-run 和依赖审计；全部通过后才会迁移并部署生产资源。只有明确需要评审时才使用 Pull Request，PR 不读取生产 Secret，也不会迁移或部署远程资源；已经开始的生产发布不会被后续提交取消。
 
 在 GitHub 仓库的 Actions Secrets 中配置：
 

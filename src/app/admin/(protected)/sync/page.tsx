@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { adminRequestJson as requestJson } from "@/lib/admin-api";
+import { activeTelegramWebhookError } from "@/lib/telegram-webhook-status";
 
 type TelegramStatus = {
   configured: { botToken: boolean; webhookSecret: boolean };
@@ -100,6 +101,7 @@ export default function SyncPage() {
   }
 
   const webhookReady = Boolean(status?.webhook?.url && status.webhook.url === status.expectedWebhookUrl);
+  const webhookError = activeTelegramWebhookError(status?.webhook);
   const secretsReady = Boolean(status?.configured.botToken && status.configured.webhookSecret);
 
   return (
@@ -143,7 +145,7 @@ export default function SyncPage() {
               <div><dt className="text-xs text-zinc-500">Telegram 当前地址</dt><dd className="mt-1 break-all text-sm font-medium">{status?.webhook?.url || "未注册"}</dd></div>
               <div><dt className="text-xs text-zinc-500">订阅 Update</dt><dd className="mt-2 flex flex-wrap gap-2">{(status?.webhook?.allowed_updates ?? []).length ? status?.webhook?.allowed_updates?.map((item) => <span key={item} className="rounded-md bg-zinc-100 px-2 py-1 text-xs text-zinc-700">{item}</span>) : <span className="text-sm text-zinc-500">暂无</span>}</dd></div>
             </dl>
-            {status?.webhook?.last_error_message && <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">Telegram：{status.webhook.last_error_message}</p>}
+            {webhookError && <p className="mt-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">Telegram：{webhookError}</p>}
             <div className="mt-5 flex flex-wrap gap-3">
               <Button disabled={busy !== null || !secretsReady} onClick={() => void operate("register")} className="bg-zinc-900 text-white hover:bg-zinc-800">{busy === "register" ? <Loader2 className="animate-spin" /> : <Link2 />}{webhookReady ? "重新注册 Webhook" : "注册 Webhook"}</Button>
               <Button variant="outline" disabled={busy !== null || !status?.webhook?.url} onClick={() => setConfirmDisable(true)} className="text-red-700 hover:bg-red-50 hover:text-red-800"><Unplug />停用 Webhook</Button>

@@ -9,7 +9,7 @@ GeekShare Archive 是一个可自建的 Telegram 频道持久化归档。它用 
 
 ## 项目状态
 
-Phase 2 可靠性加固已于 2026-08-28 发布到 Production；此后已补充首页分页、Telegram 富文本消息、基于 Canonical URL 动态生成的默认分享图，以及反应目标缺失的 5 次有界重试。截至 2026-09-07，本地 69 项测试、lint、typecheck、生产构建、Assets 校验、Wrangler dry-run 和高风险依赖审计均通过；生产 D1 migration 与 Cloudflare Worker 已发布，Telegram 待处理队列归零，线上首页与 `/api/archive-meta` 返回 200。Phase 2.4 暂缓，尚未完成真实 Telegram 媒体、缩略图故障恢复及 R2 PUT → D1 失败重试的端到端验证；详见 [PRODUCT.md](PRODUCT.md)。
+Phase 2 可靠性加固已于 2026-08-28 发布到 Production；此后已补充首页分页、Telegram 富文本消息、基于 Canonical URL 动态生成的默认分享图，以及反应目标缺失的 5 次有界重试。截至 2026-09-07，本地 70 项测试、lint、typecheck、生产构建、Assets 校验、Wrangler dry-run 和高风险依赖审计均通过；生产 D1 migration 与 Cloudflare Worker 已发布，Telegram 待处理队列归零，后台不再把队列清空后的历史错误误报为当前故障，线上首页与 `/api/archive-meta` 返回 200。Phase 2.4 暂缓，尚未完成真实 Telegram 媒体、缩略图故障恢复及 R2 PUT → D1 失败重试的端到端验证；详见 [PRODUCT.md](PRODUCT.md)。
 
 ## 功能
 

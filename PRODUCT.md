@@ -66,7 +66,7 @@ GeekShare Archive 将 Telegram 频道的新推送、编辑、反应和媒体持�
 - 同日本地 D1 已应用 `0001`、`0002` 和 `0003` 三份 migration，包含 1 个演示频道和 10 条演示消息。
 - 2026-08-27 隔离 Local D1 回归测试验证同一份 10 条消息的快照连续导入后，`messages` 与 `messages_fts` 均保持 10 行且无重复 ID；`0004_rebuild_messages_fts.sql` 也将人为保留的 10 条消息 / 20 条 FTS 脏数据恢复为一一对应。
 - 2026-08-28 本地 57 项测试验证 Webhook lease/reclaim、跨频道消息身份、reaction 延迟重试、管理员覆盖、FTS 重放、媒体退避/耗尽、thumbnail 补偿以及 `0005` fresh/upgrade migration；同日 lint、typecheck、build、Assets 校验和 Wrangler dry-run 通过。
-- 2026-09-07 当前 `main` 已包含首页页码分页、Telegram 富文本消息、动态默认分享图和反应目标缺失的 5 次有界重试；本地 69 项测试、lint、typecheck、生产构建、Assets 校验、Wrangler dry-run 和 `npm audit --audit-level=high` 均通过。生产 migration `0006` 与 Cloudflare Worker 已发布，38 条历史目标缺失反应记录已转为 `ignored`，Telegram `pending_update_count` 归零，线上首页与 `/api/archive-meta` 返回 200；这些线上证据不替代真实 Telegram 媒体恢复的端到端验证。
+- 2026-09-07 当前 `main` 已包含首页页码分页、Telegram 富文本消息、动态默认分享图和反应目标缺失的 5 次有界重试；本地 70 项测试、lint、typecheck、生产构建、Assets 校验、Wrangler dry-run 和 `npm audit --audit-level=high` 均通过。生产 migration `0006` 与 Cloudflare Worker 已发布，38 条历史目标缺失反应记录已转为 `ignored`，Telegram `pending_update_count` 归零，后台不再把队列清空后的历史错误误报为当前故障，线上首页与 `/api/archive-meta` 返回 200；这些线上证据不替代真实 Telegram 媒体恢复的端到端验证。
 
 上述本地证据只证明仓库实现和本地构建状态；2026-09-07 的远程证据只证明对应流水线及公开端点在验证时可用，不证明 Webhook、Access、全部 Cloudflare 资源或生产数据持续健康。
 

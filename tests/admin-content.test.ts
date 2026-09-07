@@ -24,6 +24,7 @@ import {
   type AdminAccessConfig,
   type Env,
 } from "../src/cloudflare/runtime";
+import { activeTelegramWebhookError } from "../src/lib/telegram-webhook-status";
 
 test("admin content filters only accept documented values", () => {
   assert.equal(parseAdminMessageStatus(null), "all");
@@ -33,6 +34,20 @@ test("admin content filters only accept documented values", () => {
   assert.equal(parseAdminMediaStatus("missing"), null);
   assert.equal(parseAdminMessageSort("updated"), "updated");
   assert.equal(parseAdminMessageSort("random"), null);
+});
+
+test("admin sync only reports Telegram webhook errors while updates are pending", () => {
+  assert.equal(activeTelegramWebhookError(null), null);
+  assert.equal(activeTelegramWebhookError({ pending_update_count: 0 }), null);
+  assert.equal(activeTelegramWebhookError({
+    pending_update_count: 0,
+    last_error_message: "Wrong response from the webhook: 500 Internal Server Error",
+  }), null);
+  assert.equal(activeTelegramWebhookError({
+    pending_update_count: 1,
+    last_error_message: "Wrong response from the webhook: 500 Internal Server Error",
+  }), "Wrong response from the webhook: 500 Internal Server Error");
+  assert.equal(activeTelegramWebhookError({ last_error_message: "  connection failed  " }), "connection failed");
 });
 
 test("admin tags are normalized, deduplicated, and bounded", () => {

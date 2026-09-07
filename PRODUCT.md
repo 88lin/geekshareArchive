@@ -40,6 +40,7 @@ GeekShare Archive 将 Telegram 频道的新推送、编辑、反应和媒体持�
 - 站点品牌和 SEO 配置保存在 D1，站点图片保存在 R2，由 Worker 在请求时读取和注入，无需重新构建；未上传自定义分享图时，默认分享图会根据 Canonical URL 的 hostname 动态生成。
 - Webhook 先持久化正文和原始 Update，再异步归档媒体；媒体失败不能导致正文丢失。
 - Webhook `update_id` 只表示 delivery；`processing` 使用 10 分钟 lease，过期 delivery 可以原子 reclaim，完成态和新鲜 processing 的重复 delivery 不重复执行。
+- 反应 Update 在目标消息尚未入库时最多重试 5 次；达到上限后保留诊断信息并以 `ignored` 终止，不能通过 500 无限占用 Telegram 投递队列。
 - Telegram 消息使用 `(origin_channel_id, telegram_message_id)` 作为来源身份，`messages.id` 作为稳定公共归档身份；已有公共 ID 不因同步算法变化而重命名。
 - 媒体自动恢复采用 1、2、4、8 小时退避并在第 5 次失败后停止；人工重试可以重置 exhausted 状态。
 - thumbnail 失败必须可观察并可补偿，已成功的主 R2 对象继续复用；当前不支持的大型文件类型以明确的永久失败结束，不能无限请求。
@@ -65,7 +66,7 @@ GeekShare Archive 将 Telegram 频道的新推送、编辑、反应和媒体持�
 - 同日本地 D1 已应用 `0001`、`0002` 和 `0003` 三份 migration，包含 1 个演示频道和 10 条演示消息。
 - 2026-08-27 隔离 Local D1 回归测试验证同一份 10 条消息的快照连续导入后，`messages` 与 `messages_fts` 均保持 10 行且无重复 ID；`0004_rebuild_messages_fts.sql` 也将人为保留的 10 条消息 / 20 条 FTS 脏数据恢复为一一对应。
 - 2026-08-28 本地 57 项测试验证 Webhook lease/reclaim、跨频道消息身份、reaction 延迟重试、管理员覆盖、FTS 重放、媒体退避/耗尽、thumbnail 补偿以及 `0005` fresh/upgrade migration；同日 lint、typecheck、build、Assets 校验和 Wrangler dry-run 通过。
-- 2026-09-07 当前 `main` 已包含首页页码分页、Telegram 富文本消息和动态默认分享图；本地 66 项测试、lint、typecheck、生产构建、Assets 校验、Wrangler dry-run 和 `npm audit --audit-level=high` 均通过。同期最新 GitHub Actions 生产流水线成功，线上首页与 `/api/archive-meta` 返回 200；这些线上证据只覆盖公开端点和该次流水线，不替代真实 Telegram 媒体恢复的端到端验证。
+- 2026-09-07 当前 `main` 已包含首页页码分页、Telegram 富文本消息、动态默认分享图和反应目标缺失的 5 次有界重试；本地 69 项测试、lint、typecheck、生产构建、Assets 校验、Wrangler dry-run 和 `npm audit --audit-level=high` 均通过。生产 migration `0006` 与 Cloudflare Worker 已发布，38 条历史目标缺失反应记录已转为 `ignored`，Telegram `pending_update_count` 归零，线上首页与 `/api/archive-meta` 返回 200；这些线上证据不替代真实 Telegram 媒体恢复的端到端验证。
 
 上述本地证据只证明仓库实现和本地构建状态；2026-09-07 的远程证据只证明对应流水线及公开端点在验证时可用，不证明 Webhook、Access、全部 Cloudflare 资源或生产数据持续健康。
 

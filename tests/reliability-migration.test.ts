@@ -14,7 +14,7 @@ function columns(db: LocalD1, table: string): string[] {
   return (db.sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(({ name }) => name);
 }
 
-test("fresh schema applies webhook lease and media retry migration", () => {
+test("fresh schema applies webhook lease, media retry, and bounded reaction migrations", () => {
   const db = new LocalD1();
   assert.deepEqual(
     columns(db, "webhook_updates").filter((name) => ["attempt_count", "last_attempt_at"].includes(name)),
@@ -36,6 +36,52 @@ test("fresh schema applies webhook lease and media retry migration", () => {
   assert.ok(
     (db.sqlite.prepare("PRAGMA index_list(messages)").all() as Array<{ name: string }>)
       .some(({ name }) => name === "messages_media_retry_queue_idx"),
+  );
+});
+
+test("0006 only reclassifies historical missing-reaction failures", () => {
+  const db = new LocalD1(ALL_MIGRATIONS.slice(0, 5));
+  db.sqlite.exec(`
+    INSERT INTO webhook_updates(
+      update_id, status, error, processed_at, attempt_count, last_attempt_at
+    ) VALUES
+      ('missing-reaction', 'failed', 'Reaction target message was not found',
+       '2026-09-07 01:00:00', 963, '2026-09-07 01:00:00'),
+      ('database-failure', 'failed', 'D1 unavailable',
+       '2026-09-07 01:01:00', 2, '2026-09-07 01:01:00'),
+      ('successful-update', 'success', NULL,
+       '2026-09-07 01:02:00', 1, '2026-09-07 01:02:00');
+  `);
+
+  db.applyMigration("0006_bound_missing_reaction_retries.sql");
+  assert.deepEqual(
+    db.sqlite.prepare(
+      `SELECT update_id, status, error, attempt_count, processed_at
+       FROM webhook_updates ORDER BY update_id`,
+    ).all().map((row) => ({ ...row })),
+    [
+      {
+        update_id: "database-failure",
+        status: "failed",
+        error: "D1 unavailable",
+        attempt_count: 2,
+        processed_at: "2026-09-07 01:01:00",
+      },
+      {
+        update_id: "missing-reaction",
+        status: "ignored",
+        error: "Reaction target message was not found",
+        attempt_count: 963,
+        processed_at: "2026-09-07 01:00:00",
+      },
+      {
+        update_id: "successful-update",
+        status: "success",
+        error: null,
+        attempt_count: 1,
+        processed_at: "2026-09-07 01:02:00",
+      },
+    ],
   );
 });
 
@@ -105,7 +151,7 @@ test("0005 upgrades an existing 0001-0004 database without losing messages, FTS,
   );
 });
 
-test("Wrangler recognizes 0005 for both fresh apply and existing local D1 upgrade", () => {
+test("Wrangler recognizes 0005 and 0006 for fresh apply and existing local D1 upgrade", () => {
   const temporary = mkdtempSync(path.join(tmpdir(), "geekshare-reliability-migration-"));
   const migrations = path.join(temporary, "migrations");
   const xdgConfig = path.join(temporary, "xdg");
@@ -157,14 +203,16 @@ test("Wrangler recognizes 0005 for both fresh apply and existing local D1 upgrad
          'message7', 'geekshare', 'geekshare', 7, 'https://t.me/xgeekshare/7',
          '2023-11-15', 1700000000, '2023', '2023-11', 'wrangler upgrade text', 'failed'
        );
-       INSERT INTO webhook_updates(update_id, status) VALUES ('100', 'processing');`,
+       INSERT INTO webhook_updates(update_id, status) VALUES ('100', 'processing');
+       INSERT INTO webhook_updates(update_id, status, error, processed_at)
+       VALUES ('101', 'failed', 'Reaction target message was not found', '2026-09-07 01:00:00');`,
     ], upgradePersistence);
-    copyFileSync(
-      path.join(root, "migrations", "0005_webhook_media_reliability.sql"),
-      path.join(migrations, "0005_webhook_media_reliability.sql"),
-    );
+    for (const migration of ALL_MIGRATIONS.slice(4)) {
+      copyFileSync(path.join(root, "migrations", migration), path.join(migrations, migration));
+    }
     const upgraded = run(["d1", "migrations", "apply", "geekshare-archive"], upgradePersistence);
     assert.match(upgraded, /0005_webhook_media_reliability\.sql/);
+    assert.match(upgraded, /0006_bound_missing_reaction_retries\.sql/);
     const upgradeQuery = JSON.parse(run([
       "d1", "execute", "geekshare-archive", "--command",
       `SELECT COUNT(*) AS messages FROM messages;
@@ -172,20 +220,23 @@ test("Wrangler recognizes 0005 for both fresh apply and existing local D1 upgrad
        SELECT COUNT(*) AS updates FROM webhook_updates;
        SELECT media_retry_count, media_retry_exhausted FROM messages WHERE id = 'message7';
        SELECT attempt_count, last_attempt_at IS NOT NULL AS has_attempt_at
-       FROM webhook_updates WHERE update_id = '100';`,
+       FROM webhook_updates WHERE update_id = '100';
+       SELECT status, error, attempt_count FROM webhook_updates WHERE update_id = '101';`,
       "--json",
     ], upgradePersistence)) as Array<{ results: Array<Record<string, number>> }>;
     assert.deepEqual(upgradeQuery.map(({ results }) => results[0]), [
       { messages: 1 },
       { fts: 1 },
-      { updates: 1 },
+      { updates: 2 },
       { media_retry_count: 0, media_retry_exhausted: 0 },
       { attempt_count: 1, has_attempt_at: 1 },
+      { status: "ignored", error: "Reaction target message was not found", attempt_count: 1 },
     ]);
 
     const fresh = run(["d1", "migrations", "apply", "geekshare-archive"], freshPersistence);
     assert.match(fresh, /0001_initial\.sql/);
     assert.match(fresh, /0005_webhook_media_reliability\.sql/);
+    assert.match(fresh, /0006_bound_missing_reaction_retries\.sql/);
     const freshQuery = JSON.parse(run([
       "d1", "execute", "geekshare-archive", "--command",
       `SELECT COUNT(*) AS webhook_columns FROM pragma_table_info('webhook_updates')

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { handleApi, WEBHOOK_PROCESSING_LEASE_MS } from "../src/cloudflare/api";
+import {
+  handleApi,
+  REACTION_TARGET_MAX_RETRY_ATTEMPTS,
+  WEBHOOK_PROCESSING_LEASE_MS,
+} from "../src/cloudflare/api";
 import {
   createTestEnv,
   deliver,
@@ -341,16 +345,47 @@ test("duplicate edits preserve admin overrides and keep FTS content one-to-one",
   assert.equal(db.scalar("SELECT COUNT(*) AS value FROM messages_fts WHERE messages_fts MATCH 'telegram edit'"), 0);
 });
 
-test("missing reactions fail and later retry by composite identity while tombstones are ignored", async () => {
+test("missing reactions retry five times before becoming terminally ignored", async () => {
   const { db, env } = createTestEnv();
   const reaction = reactionUpdate(50);
-  assert.equal((await deliver(env, reaction)).response.status, 500);
-  assert.deepEqual(
-    db.row("SELECT status, attempt_count FROM webhook_updates WHERE update_id = '50'"),
-    { status: "failed", attempt_count: 1 },
-  );
+  assert.equal(REACTION_TARGET_MAX_RETRY_ATTEMPTS, 5);
+  for (let attempt = 1; attempt < REACTION_TARGET_MAX_RETRY_ATTEMPTS; attempt += 1) {
+    assert.equal((await deliver(env, reaction)).response.status, 500);
+    assert.deepEqual(
+      db.row("SELECT status, attempt_count FROM webhook_updates WHERE update_id = '50'"),
+      { status: "failed", attempt_count: attempt },
+    );
+  }
 
-  assert.equal((await deliver(env, messageUpdate(51, "reaction target"))).response.status, 204);
+  assert.equal((await deliver(env, reaction)).response.status, 204);
+  assert.deepEqual(
+    db.row(
+      `SELECT channel_id, telegram_message_id, status, error, attempt_count,
+              processed_at IS NOT NULL AS processed
+       FROM webhook_updates WHERE update_id = '50'`,
+    ),
+    {
+      channel_id: "geekshare",
+      telegram_message_id: 7,
+      status: "ignored",
+      error: "Reaction target message was not found",
+      attempt_count: 5,
+      processed: 1,
+    },
+  );
+  assert.equal((await deliver(env, reaction)).response.status, 204);
+  assert.equal(
+    db.row<{ attempt_count: number }>("SELECT attempt_count FROM webhook_updates WHERE update_id = '50'").attempt_count,
+    5,
+  );
+});
+
+test("missing reactions recover before the retry limit while tombstones are ignored", async () => {
+  const { db, env } = createTestEnv();
+  const reaction = reactionUpdate(51);
+  assert.equal((await deliver(env, reaction)).response.status, 500);
+
+  assert.equal((await deliver(env, messageUpdate(53, "reaction target"))).response.status, 204);
   assert.equal((await deliver(env, reaction)).response.status, 204);
   assert.equal((await deliver(env, reaction)).response.status, 204);
   assert.deepEqual(
@@ -362,7 +397,7 @@ test("missing reactions fail and later retry by composite identity while tombsto
     },
   );
   assert.deepEqual(
-    db.row("SELECT status, attempt_count FROM webhook_updates WHERE update_id = '50'"),
+    db.row("SELECT status, attempt_count FROM webhook_updates WHERE update_id = '51'"),
     { status: "success", attempt_count: 2 },
   );
 
@@ -377,5 +412,28 @@ test("missing reactions fail and later retry by composite identity while tombsto
   assert.deepEqual(
     db.row("SELECT status, channel_id, telegram_message_id, attempt_count FROM webhook_updates WHERE update_id = '52'"),
     { status: "ignored", channel_id: "geekshare", telegram_message_id: 999, attempt_count: 1 },
+  );
+});
+
+test("unknown reaction channels are ignored while database failures remain retryable errors", async () => {
+  const { db, env } = createTestEnv();
+  const unknownChannel = reactionUpdate(54);
+  unknownChannel.message_reaction_count!.chat = {
+    id: -9999,
+    username: "unknownchannel",
+    type: "channel",
+  };
+  assert.equal((await deliver(env, unknownChannel)).response.status, 204);
+  assert.deepEqual(
+    db.row("SELECT status, attempt_count FROM webhook_updates WHERE update_id = '54'"),
+    { status: "ignored", attempt_count: 1 },
+  );
+
+  assert.equal((await deliver(env, messageUpdate(55, "database failure target"))).response.status, 204);
+  db.failOnce((query) => query.includes("UPDATE messages SET reactions"), "forced reaction database failure");
+  assert.equal((await deliver(env, reactionUpdate(56))).response.status, 500);
+  assert.deepEqual(
+    db.row("SELECT status, error, attempt_count FROM webhook_updates WHERE update_id = '56'"),
+    { status: "failed", error: "forced reaction database failure", attempt_count: 1 },
   );
 });

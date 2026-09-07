@@ -74,6 +74,7 @@ import {
 const PAGE_SIZE = 30;
 const MAX_PAGE_SIZE = 60;
 export const WEBHOOK_PROCESSING_LEASE_MS = 10 * 60 * 1000;
+export const REACTION_TARGET_MAX_RETRY_ATTEMPTS = 5;
 export const MEDIA_MAX_RETRY_ATTEMPTS = 5;
 export const MEDIA_RETRY_DELAYS_MS = [
   60 * 60 * 1000,
@@ -84,6 +85,16 @@ export const MEDIA_RETRY_DELAYS_MS = [
 
 export function mediaRetryDelayMs(failureCount: number): number | null {
   return MEDIA_RETRY_DELAYS_MS[failureCount - 1] ?? null;
+}
+
+class ReactionTargetMissingError extends Error {
+  constructor(
+    readonly channelId: string,
+    readonly telegramMessageId: number,
+  ) {
+    super("Reaction target message was not found");
+    this.name = "ReactionTargetMissingError";
+  }
 }
 
 interface ChannelRow {
@@ -806,7 +817,7 @@ async function processReaction(
     ).bind(channel.id),
   ]);
   if ((results[0]?.meta.changes ?? 0) === 0) {
-    throw new Error("Reaction target message was not found");
+    throw new ReactionTargetMissingError(channel.id, reaction.message_id);
   }
   return { channel, status: "success" };
 }
@@ -939,6 +950,26 @@ async function telegramWebhook(
     return new Response(null, { status: 204 });
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 500) : "Webhook failed";
+    if (error instanceof ReactionTargetMissingError) {
+      const exhausted = claim.attemptCount >= REACTION_TARGET_MAX_RETRY_ATTEMPTS;
+      await env.DB.prepare(
+        `UPDATE webhook_updates SET channel_id = ?, telegram_message_id = ?, status = ?,
+         error = ?, processed_at = CURRENT_TIMESTAMP
+         WHERE update_id = ? AND status = 'processing' AND attempt_count = ?`,
+      )
+        .bind(
+          error.channelId,
+          error.telegramMessageId,
+          exhausted ? "ignored" : "failed",
+          message,
+          updateId,
+          claim.attemptCount,
+        )
+        .run();
+      return exhausted
+        ? new Response(null, { status: 204 })
+        : errorResponse(500, "Webhook processing failed");
+    }
     await env.DB.prepare(
       `UPDATE webhook_updates SET status = 'failed', error = ?, processed_at = CURRENT_TIMESTAMP
        WHERE update_id = ? AND status = 'processing' AND attempt_count = ?`,

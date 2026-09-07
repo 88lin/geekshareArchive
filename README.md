@@ -9,7 +9,7 @@ GeekShare Archive 是一个可自建的 Telegram 频道持久化归档。它用 
 
 ## 项目状态
 
-Phase 2 可靠性加固已于 2026-08-28 发布到 Production；此后已补充首页分页、Telegram 富文本消息和基于 Canonical URL 动态生成的默认分享图。截至 2026-09-07，本地 66 项测试、lint、typecheck、生产构建、Assets 校验、Wrangler dry-run 和高风险依赖审计均通过；最新 `main` 的 GitHub Actions 生产流水线成功，线上首页与 `/api/archive-meta` 返回 200。Phase 2.4 暂缓，尚未完成真实 Telegram 媒体、缩略图故障恢复及 R2 PUT → D1 失败重试的端到端验证；详见 [PRODUCT.md](PRODUCT.md)。
+Phase 2 可靠性加固已于 2026-08-28 发布到 Production；此后已补充首页分页、Telegram 富文本消息、基于 Canonical URL 动态生成的默认分享图，以及反应目标缺失的 5 次有界重试。截至 2026-09-07，本地 69 项测试、lint、typecheck、生产构建、Assets 校验、Wrangler dry-run 和高风险依赖审计均通过；生产 D1 migration 与 Cloudflare Worker 已发布，Telegram 待处理队列归零，线上首页与 `/api/archive-meta` 返回 200。Phase 2.4 暂缓，尚未完成真实 Telegram 媒体、缩略图故障恢复及 R2 PUT → D1 失败重试的端到端验证；详见 [PRODUCT.md](PRODUCT.md)。
 
 ## 功能
 
@@ -152,6 +152,7 @@ Webhook 可靠性规则：
 
 - `update_id` 是 delivery identity；已完成或仍处于新鲜 lease 的重复 delivery 不会重复执行副作用，超过 10 分钟的 `processing` 可被原子 reclaim。
 - Telegram 消息以 `(origin_channel_id, telegram_message_id)` 定位；`messages.id` 仅是稳定的归档/公共 identity，已有 ID 在编辑、reaction 和重放时保持不变。
+- 反应 Update 暂时找不到目标消息时最多重试 5 次；第 5 次仍缺失会保留错误记录、标记为 `ignored` 并返回成功，避免 Telegram 无限重投。
 - 正文先写入 D1，媒体随后归档到稳定 R2 key。失败按 1、2、4、8 小时退避，第 5 次失败后停止自动重试；管理员显式重试会解除 exhausted 状态。
 - thumbnail 失败会保留已归档主媒体并进入可恢复失败；当前不支持的大型 document/audio 等文件会记录明确原因并停止自动重试，不会被误标为 archived。
 
